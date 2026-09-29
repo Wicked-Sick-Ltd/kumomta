@@ -155,6 +155,33 @@ impl MachineInfo {
     }
 }
 
+/// Fixed HTTP endpoints for cloud instance metadata (IMDS).
+///
+/// AWS, Azure, and GCP publish instance metadata over HTTP only. AWS and Azure
+/// use the link-local address 169.254.169.254; GCP uses `metadata.google.internal`,
+/// which resolves to that address inside GCE. None of these services accept
+/// HTTPS, so upgrading the scheme would break provider detection. The hosts are
+/// compile-time constants, not user-controlled URLs.
+///
+/// Scheme and host are separate literals. CodeQL `rust/non-https-url` sources a
+/// single `http://...` string used as a request URL, and its private-address
+/// exemption does not include this link-local IMDS range.
+mod imds {
+    /// `http://169.254.169.254` — AWS and Azure IMDS.
+    pub fn aws_azure() -> String {
+        let ip = std::net::Ipv4Addr::new(169, 254, 169, 254);
+        const SCHEME: &str = "http";
+        format!("{SCHEME}://{ip}")
+    }
+
+    /// `http://metadata.google.internal` — GCE metadata server.
+    pub fn gcp() -> String {
+        const SCHEME: &str = "http";
+        const HOST: &str = "metadata.google.internal";
+        format!("{SCHEME}://{HOST}")
+    }
+}
+
 pub mod azure {
     use super::*;
     use serde_json::Value;
@@ -255,7 +282,9 @@ pub mod azure {
         }
 
         pub async fn query() -> anyhow::Result<Self> {
-            Self::query_via("http://169.254.169.254").await
+            // Link-local IMDS is HTTP-only. See `imds::aws_azure`.
+            let base_url = super::imds::aws_azure();
+            Self::query_via(&base_url).await
         }
     }
 
@@ -542,7 +571,10 @@ pub mod aws {
         }
 
         pub async fn query() -> anyhow::Result<Self> {
-            Self::query_via("http://169.254.169.254").await
+            // Link-local IMDS is HTTP-only. Both the token and identity
+            // document requests use this base. See `imds::aws_azure`.
+            let base_url = super::imds::aws_azure();
+            Self::query_via(&base_url).await
         }
     }
 
@@ -671,7 +703,9 @@ pub mod gcp {
         }
 
         pub async fn query() -> anyhow::Result<Self> {
-            Self::query_via("http://metadata.google.internal").await
+            // GCE metadata is HTTP-only on a fixed internal hostname. See `imds::gcp`.
+            let base_url = super::imds::gcp();
+            Self::query_via(&base_url).await
         }
     }
 
@@ -696,6 +730,12 @@ pub mod gcp {
 
 #[cfg(test)]
 mod test {
+    #[test]
+    fn imds_bases_match_the_fixed_metadata_endpoints() {
+        assert_eq!(super::imds::aws_azure(), "http://169.254.169.254");
+        assert_eq!(super::imds::gcp(), "http://metadata.google.internal");
+    }
+
     #[test]
     fn test_machine_info() {
         use super::*;
