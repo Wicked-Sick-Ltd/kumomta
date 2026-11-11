@@ -2606,8 +2606,22 @@ MergedEntry {
             .to_str()
             .expect("shaping fixture path is utf-8")
             .to_string();
-        Shaping::merge_files(&[fixture], &ShapingMergeOptions::default())
+        let shaping = Shaping::merge_files(&[fixture], &ShapingMergeOptions::default())
             .await
             .unwrap();
+        assert!(
+            shaping.get_errors().is_empty(),
+            "default shaping fixture should parse cleanly: {:?}",
+            shaping.get_errors()
+        );
+        let example = shaping
+            .get_egress_path_config("example.com", "invalid.source", "invalid.site")
+            .await
+            .finish()
+            .unwrap();
+        assert_eq!(
+            example.params.connection_limit.limit, 3,
+            "the bundled example.com section was not loaded"
+        );
     }
 }
