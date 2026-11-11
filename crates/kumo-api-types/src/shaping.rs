@@ -625,8 +625,19 @@ impl Shaping {
                     }
                 }
             } else {
-                config::sanitize_untrusted_path(std::path::Path::new(path))
-                    .with_context(|| format!("refusing local shaping source {path}"))?;
+                // A refused path is the same class of local-source failure as a
+                // missing file: record it at `local_load` and skip the source.
+                // Returning here would abort the whole merge, including when
+                // `local_load` is Warn or Ignore.
+                if let Err(err) = config::sanitize_untrusted_path(std::path::Path::new(path))
+                    .with_context(|| format!("refusing local shaping source {path}"))
+                {
+                    collector.push(
+                        options.local_load,
+                        format!("local shaping source {path} error: {err:#}"),
+                    );
+                    return Ok(ShapingFile::default());
+                }
                 match std::fs::read_to_string(path)
                     .with_context(|| format!("loading data from file {path}"))
                 {
@@ -1587,6 +1598,39 @@ mod test {
         Shaping::merge_files(&file_names, &ShapingMergeOptions::default())
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn refused_local_source_follows_local_load() {
+        let path = "../not-a-shaping-file.toml".to_string();
+
+        let warned = Shaping::merge_files(
+            std::slice::from_ref(&path),
+            &ShapingMergeOptions {
+                local_load: CheckLevel::Warn,
+                ..ShapingMergeOptions::default()
+            },
+        )
+        .await
+        .expect("Warn records the refusal and still returns the merge");
+        assert!(
+            warned.get_warnings().iter().any(|w| w.contains("..")),
+            "warnings: {:?}",
+            warned.get_warnings()
+        );
+        assert!(warned.get_errors().is_empty());
+
+        let errored = Shaping::merge_files(
+            std::slice::from_ref(&path),
+            &ShapingMergeOptions::default(),
+        )
+        .await
+        .expect("default local_load Error records the refusal instead of returning Err");
+        assert!(
+            errored.get_errors().iter().any(|e| e.contains("..")),
+            "errors: {:?}",
+            errored.get_errors()
+        );
     }
 
     #[tokio::test]
