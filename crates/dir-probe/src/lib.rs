@@ -44,7 +44,28 @@ use tempfile::Builder;
 /// or which permission bits are "correct".  On failure the returned
 /// error names the directory owner, mode, and the process ids so the
 /// operator can see the mismatch.
+/// Reject a directory path that contains a `..` component.
+///
+/// Spool and maildir paths reach this probe from operator config and, for
+/// maildir delivery, from a template filled with message and request fields.
+/// A `..` component would make the probe (and the store that follows it)
+/// write outside the directory the caller named. Absolute paths and relative
+/// paths without `..` are left unchanged.
+pub fn reject_parent_dir(dir: &Path) -> anyhow::Result<&Path> {
+    if dir
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        anyhow::bail!(
+            "refusing filesystem path '{}': it contains a '..' component",
+            dir.display()
+        );
+    }
+    Ok(dir)
+}
+
 pub fn probe_directory(dir: &Path) -> anyhow::Result<()> {
+    let dir = reject_parent_dir(dir)?;
     // Create a file the way RocksDB creates its WAL and MANIFEST files.
     let source = Builder::new()
         .prefix(".kumo-dir-probe")
@@ -114,7 +135,8 @@ pub fn probe_directory(dir: &Path) -> anyhow::Result<()> {
 /// directory.
 #[cfg(unix)]
 fn consistency_check(target: &Path) -> anyhow::Result<()> {
-    use nix::unistd::{access, AccessFlags};
+    let target = reject_parent_dir(target)?;
+    use nix::unistd::{AccessFlags, access};
 
     // F_OK deliberately tests only existence plus parent-directory
     // search, matching how RocksDB's FileExists probes for CURRENT.  Do
@@ -176,6 +198,26 @@ fn describe_context(dir: &Path) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[test]
+    fn probe_rejects_parent_dir_component() {
+        let dir = tempfile::tempdir().unwrap();
+        let climbing = dir.path().join("..").join(dir.path().file_name().unwrap());
+        let err = probe_directory(&climbing).unwrap_err();
+        assert!(
+            err.to_string().contains(".."),
+            "parent-dir path should be refused, got {err}"
+        );
+        // Nothing was created in the real directory: refusal happens first.
+        let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert!(
+            leftovers.is_empty(),
+            "probe wrote despite refusal: {leftovers:?}"
+        );
+    }
 
     #[test]
     fn probe_succeeds_on_writable_dir() {

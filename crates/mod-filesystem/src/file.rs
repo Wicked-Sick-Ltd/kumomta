@@ -163,6 +163,8 @@ impl LuaUserData for AsyncFile {
 
 impl AsyncFile {
     pub async fn open(_: Lua, (filename, mode): (String, Option<String>)) -> mlua::Result<Self> {
+        config::sanitize_untrusted_path(std::path::Path::new(&filename))
+            .map_err(mlua::Error::external)?;
         let mut options = OpenOptions::new();
 
         let mode = mode.as_deref().unwrap_or("r");

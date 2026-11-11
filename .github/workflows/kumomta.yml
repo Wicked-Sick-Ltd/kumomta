@@ -57,7 +57,9 @@ jobs:
       attestations: write
       id-token: write
     uses: ./.github/workflows/reusable-kumomta-build.yml
-    secrets: inherit
+    secrets:
+      OPENREPO_GPG_PUBLIC: ${{ secrets.OPENREPO_GPG_PUBLIC }}
+      OPENREPO_GPG_PRIVATE: ${{ secrets.OPENREPO_GPG_PRIVATE }}
     with:
       builder_image: ${{ matrix.builder_image }}
       base_image: ${{ matrix.base_image }}
@@ -104,7 +106,9 @@ jobs:
       attestations: write
       id-token: write
     uses: ./.github/workflows/reusable-kumomta-build.yml
-    secrets: inherit
+    secrets:
+      OPENREPO_GPG_PUBLIC: ${{ secrets.OPENREPO_GPG_PUBLIC }}
+      OPENREPO_GPG_PRIVATE: ${{ secrets.OPENREPO_GPG_PRIVATE }}
     with:
       builder_image: ${{ matrix.builder_image }}
       base_image: ${{ matrix.base_image }}
@@ -135,7 +139,9 @@ jobs:
       attestations: write
       id-token: write
     uses: ./.github/workflows/reusable-kumomta-build.yml
-    secrets: inherit
+    secrets:
+      OPENREPO_GPG_PUBLIC: ${{ secrets.OPENREPO_GPG_PUBLIC }}
+      OPENREPO_GPG_PRIVATE: ${{ secrets.OPENREPO_GPG_PRIVATE }}
     with:
       builder_image: ${{ matrix.builder_image }}
       base_image: ${{ matrix.base_image }}

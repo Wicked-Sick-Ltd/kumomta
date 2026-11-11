@@ -105,7 +105,13 @@ pub fn register(lua: &Lua) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn sanitize_lua_path(path: &str) -> mlua::Result<&str> {
+    config::sanitize_untrusted_path(std::path::Path::new(path)).map_err(mlua::Error::external)?;
+    Ok(path)
+}
+
 async fn read_dir(_: Lua, path: String) -> mlua::Result<Vec<String>> {
+    let path = sanitize_lua_path(&path)?;
     let mut dir = tokio::fs::read_dir(path)
         .await
         .map_err(mlua::Error::external)?;
@@ -155,20 +161,26 @@ async fn uncached_glob(
 }
 
 async fn metadata_for_path(_lua: Lua, path: String) -> mlua::Result<MetadataWrapper> {
-    let metadata = tokio::fs::metadata(&path)
+    let path = sanitize_lua_path(&path)?;
+    let metadata = tokio::fs::metadata(path)
         .await
         .map_err(mlua::Error::external)?;
     Ok(MetadataWrapper(metadata))
 }
 
 async fn symlink_metadata_for_path(_lua: Lua, path: String) -> mlua::Result<MetadataWrapper> {
-    let metadata = tokio::fs::symlink_metadata(&path)
+    let path = sanitize_lua_path(&path)?;
+    let metadata = tokio::fs::symlink_metadata(path)
         .await
         .map_err(mlua::Error::external)?;
     Ok(MetadataWrapper(metadata))
 }
 
 async fn glob(pattern: String, path: Option<String>) -> mlua::Result<Vec<String>> {
+    sanitize_lua_path(&pattern)?;
+    if let Some(path) = &path {
+        sanitize_lua_path(path)?;
+    }
     let entries = tokio::task::spawn_blocking(move || {
         let mut entries = vec![];
         let glob = filenamegen::Glob::new(&pattern)?;
@@ -194,6 +206,17 @@ async fn glob(pattern: String, path: Option<String>) -> mlua::Result<Vec<String>
 mod test {
     use super::*;
     use std::io::Write;
+
+    #[tokio::test]
+    async fn read_dir_rejects_parent_dir() {
+        let err = read_dir(Lua::new(), "../etc/passwd".to_string())
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains(".."),
+            "traversal path should be refused, got {err}"
+        );
+    }
 
     #[tokio::test]
     async fn test_metadata_file() -> anyhow::Result<()> {

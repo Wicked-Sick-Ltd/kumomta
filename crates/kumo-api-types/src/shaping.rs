@@ -625,6 +625,8 @@ impl Shaping {
                     }
                 }
             } else {
+                config::sanitize_untrusted_path(std::path::Path::new(path))
+                    .with_context(|| format!("refusing local shaping source {path}"))?;
                 match std::fs::read_to_string(path)
                     .with_context(|| format!("loading data from file {path}"))
                 {

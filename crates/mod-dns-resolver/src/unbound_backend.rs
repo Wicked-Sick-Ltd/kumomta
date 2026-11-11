@@ -92,6 +92,8 @@ pub fn build_unbound_resolver(config: &DnsResolverConfig) -> anyhow::Result<Unbo
 /// anchor so DNSSEC validation works on first use; RFC 5011 then maintains the
 /// file across future root KSK rollovers.
 fn seed_managed_anchor_file(path: &str) -> anyhow::Result<()> {
+    ::config::sanitize_untrusted_path(std::path::Path::new(path))
+        .with_context(|| format!("refusing trust anchor path {path}"))?;
     let needs_seed = match std::fs::metadata(path) {
         Ok(meta) => meta.len() == 0,
         Err(_) => true,

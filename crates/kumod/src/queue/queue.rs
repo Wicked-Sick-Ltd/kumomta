@@ -1587,6 +1587,14 @@ impl Queue {
                             "sender_email": sender.to_string(),
                         }),
                     )?;
+                    // Recipient, tenant, campaign and meta values come from the
+                    // message, which an HTTP inject or SMTP client supplies.
+                    // A `..` component in the rendered path would write outside
+                    // the directory named by the policy template.
+                    config::sanitize_untrusted_path(std::path::Path::new(&expanded_maildir_path))
+                        .with_context(|| {
+                            format!("refusing maildir path '{expanded_maildir_path}'")
+                        })?;
 
                     tracing::trace!(
                         "Deliver msg {} to maildir at {maildir_path} -> {expanded_maildir_path}",

@@ -21,6 +21,7 @@ pub struct LocalDiskSpool {
 
 impl LocalDiskSpool {
     pub fn new(path: &Path, flush: bool, runtime: Handle) -> anyhow::Result<Self> {
+        let path = dir_probe::reject_parent_dir(path)?;
         let pid_file_path = path.join("lock");
         let _pid_file = lock_pid_file(pid_file_path)?;
 

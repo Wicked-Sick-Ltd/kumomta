@@ -67,8 +67,14 @@ fn parse_toml(file_name: &str, data: &str) -> anyhow::Result<toml::Value> {
     toml::from_str(data).with_context(|| format!("parsing {file_name} as toml"))
 }
 
+fn sanitize_file_name(file_name: &str) -> mlua::Result<&str> {
+    config::sanitize_untrusted_path(std::path::Path::new(file_name)).map_err(any_err)?;
+    Ok(file_name)
+}
+
 async fn json_load(lua: Lua, file_name: String) -> mlua::Result<LuaValue> {
-    let data = tokio::fs::read(&file_name)
+    let file_name = sanitize_file_name(&file_name)?;
+    let data = tokio::fs::read(file_name)
         .await
         .with_context(|| format!("reading file {file_name}"))
         .map_err(any_err)?;
@@ -86,6 +92,8 @@ enum Parsed {
 }
 
 fn read_and_parse(file_name: &str) -> anyhow::Result<Parsed> {
+    config::sanitize_untrusted_path(std::path::Path::new(file_name))
+        .with_context(|| format!("refusing to read {file_name}"))?;
     let data = std::fs::read(file_name).with_context(|| format!("reading file {file_name}"))?;
     if file_name.ends_with(".toml") {
         let text =
@@ -143,7 +151,8 @@ fn json_encode_pretty(lua: &Lua, value: LuaValue) -> mlua::Result<String> {
 }
 
 async fn toml_load(lua: Lua, file_name: String) -> mlua::Result<LuaValue> {
-    let data = tokio::fs::read_to_string(&file_name)
+    let file_name = sanitize_file_name(&file_name)?;
+    let data = tokio::fs::read_to_string(file_name)
         .await
         .with_context(|| format!("reading file {file_name}"))
         .map_err(any_err)?;
@@ -235,7 +244,8 @@ fn toml_encode_pretty_compact_lua(lua: &Lua, value: LuaValue) -> mlua::Result<St
 }
 
 async fn yaml_load(lua: Lua, file_name: String) -> mlua::Result<LuaValue> {
-    let data = tokio::fs::read(&file_name)
+    let file_name = sanitize_file_name(&file_name)?;
+    let data = tokio::fs::read(file_name)
         .await
         .with_context(|| format!("reading file {file_name}"))
         .map_err(any_err)?;
