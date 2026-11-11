@@ -2595,11 +2595,19 @@ MergedEntry {
 
     #[tokio::test]
     async fn test_load_default_shaping_toml() {
-        Shaping::merge_files(
-            &["../../assets/policy-extras/shaping.toml".into()],
-            &ShapingMergeOptions::default(),
-        )
-        .await
-        .unwrap();
+        // The fixture lives above this crate. Canonicalize it so the path
+        // handed to merge_files has no `..` component; production still
+        // refuses a `..` component in a configured shaping source.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/policy-extras/shaping.toml");
+        let fixture = std::fs::canonicalize(&fixture)
+            .unwrap_or_else(|err| panic!("canonicalizing {}: {err}", fixture.display()));
+        let fixture = fixture
+            .to_str()
+            .expect("shaping fixture path is utf-8")
+            .to_string();
+        Shaping::merge_files(&[fixture], &ShapingMergeOptions::default())
+            .await
+            .unwrap();
     }
 }
