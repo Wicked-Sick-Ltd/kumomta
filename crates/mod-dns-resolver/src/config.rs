@@ -62,6 +62,26 @@ pub enum TrustAnchorFile {
     Managed { managed: String },
 }
 
+impl TrustAnchorFile {
+    /// The path named by either form of the option.
+    pub fn path(&self) -> &str {
+        match self {
+            Self::Static(path) => path,
+            Self::Managed { managed } => managed,
+        }
+    }
+
+    /// Refuse a `..` component before either backend opens the file.
+    /// A static path and an RFC 5011 managed path are the same kind of
+    /// operator-supplied filename.
+    pub fn reject_parent_dir(&self) -> anyhow::Result<&str> {
+        let path = self.path();
+        ::config::sanitize_untrusted_path(std::path::Path::new(path))
+            .map_err(|err| anyhow::anyhow!("{err:#}"))?;
+        Ok(path)
+    }
+}
+
 // `skip_serializing_if = "Option::is_none"` keeps the serialized form down to
 // fields the user actually set, which the unbound backend relies on when
 // re-deserializing into its own narrower options struct.
@@ -153,4 +173,31 @@ pub enum ServerOrderingStrategy {
     QueryStatistics,
     RoundRobin,
     UserProvidedOrder,
+}
+
+#[cfg(test)]
+mod trust_anchor_path_tests {
+    use super::TrustAnchorFile;
+
+    #[test]
+    fn static_and_managed_paths_reject_parent_dir() {
+        let err = TrustAnchorFile::Static("../anchors.key".into())
+            .reject_parent_dir()
+            .unwrap_err();
+        assert!(err.to_string().contains(".."), "{err}");
+
+        let err = TrustAnchorFile::Managed {
+            managed: "anchors/../../etc/passwd".into(),
+        }
+        .reject_parent_dir()
+        .unwrap_err();
+        assert!(err.to_string().contains(".."), "{err}");
+
+        assert_eq!(
+            TrustAnchorFile::Static("/var/lib/kumomta/anchors.key".into())
+                .reject_parent_dir()
+                .unwrap(),
+            "/var/lib/kumomta/anchors.key"
+        );
+    }
 }

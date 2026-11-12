@@ -1587,6 +1587,17 @@ impl Queue {
                             "sender_email": sender.to_string(),
                         }),
                     )?;
+                    // Recipient, tenant, campaign and meta values come from the
+                    // message, which an HTTP inject or SMTP client supplies.
+                    // A `..` component in the rendered path would write outside
+                    // the directory named by the policy template. Record it as
+                    // this recipient's failure and keep going: returning here
+                    // would skip the delivery log for recipients already
+                    // written, and a retry would write them again.
+                    if let Err(err) = reject_rendered_maildir_path(&expanded_maildir_path) {
+                        failures.push((recipient, err));
+                        continue;
+                    }
 
                     tracing::trace!(
                         "Deliver msg {} to maildir at {maildir_path} -> {expanded_maildir_path}",
@@ -1794,6 +1805,46 @@ pub static THROTTLE_INSERT_READY_SIG: Multiple(
     message: Message,
 ) -> ();
 }
+/// Refuse a rendered maildir path that contains a `..` component.
+/// Callers must treat `Err` as one recipient's failure. Using `?` on this
+/// result aborts the rest of the recipient list.
+fn reject_rendered_maildir_path(path: &str) -> anyhow::Result<()> {
+    config::sanitize_untrusted_path(std::path::Path::new(path)).with_context(|| {
+        format!("refusing maildir path '{path}'")
+    })?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod maildir_path_rejection {
+    use super::reject_rendered_maildir_path;
+
+    #[test]
+    fn a_rejected_path_does_not_drop_the_rest_of_the_batch() {
+        let rendered = [
+            ("alice@example.com", "/maildirs/example.com/alice"),
+            (
+                "dotdot@example.com",
+                "/maildirs/example.com/../../etc/cron.d",
+            ),
+            ("bob@example.com", "/maildirs/example.com/bob"),
+        ];
+        let mut accepted = Vec::new();
+        let mut rejected = Vec::new();
+        for (recipient, path) in rendered {
+            match reject_rendered_maildir_path(path) {
+                Ok(()) => accepted.push(recipient),
+                Err(err) => {
+                    assert!(err.to_string().contains(".."), "{err}");
+                    rejected.push(recipient);
+                }
+            }
+        }
+        assert_eq!(accepted, ["alice@example.com", "bob@example.com"]);
+        assert_eq!(rejected, ["dotdot@example.com"]);
+    }
+}
+
 declare_event! {
 static REBIND_MESSAGE_SIG: Single(
     "rebind_message",

@@ -93,6 +93,7 @@ pub struct DefineSpoolParams {
 /// error reading the directory is propagated rather than mistaken for empty,
 /// which would misdirect the omitted-`kind` diagnostic toward RocksDB.
 fn spool_path_is_empty(path: &std::path::Path) -> anyhow::Result<bool> {
+    let path = config::sanitize_untrusted_path(path)?;
     match std::fs::read_dir(path) {
         Ok(mut entries) => Ok(entries.next().is_none()),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(true),
@@ -125,6 +126,9 @@ fn resolve_spool_kind(
 }
 
 async fn define_spool(params: DefineSpoolParams) -> anyhow::Result<()> {
+    // `path` is supplied by policy. Reject `..` before the spool backend
+    // creates or reads that directory. Absolute spool paths are unchanged.
+    config::sanitize_untrusted_path(&params.path)?;
     MonitoredPath {
         name: format!("{} spool", params.name),
         path: params.path.clone(),

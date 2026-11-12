@@ -177,10 +177,12 @@ fn apply_options(opts: &mut ResolverOpts, k: &ResolverOptions) -> anyhow::Result
         opts.case_randomization = v;
     }
     match &k.trust_anchor_file {
-        Some(TrustAnchorFile::Static(path)) => {
+        Some(anchor @ TrustAnchorFile::Static(_)) => {
+            let path = anchor.reject_parent_dir()?;
             opts.trust_anchor = Some(path.into());
         }
-        Some(TrustAnchorFile::Managed { .. }) => {
+        Some(anchor @ TrustAnchorFile::Managed { .. }) => {
+            anchor.reject_parent_dir()?;
             anyhow::bail!(
                 "trust_anchor_file = {{ managed = ... }} (RFC 5011 auto-maintained \
                  anchors) is only supported by the unbound backend"

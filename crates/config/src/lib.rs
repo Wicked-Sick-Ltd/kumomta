@@ -886,3 +886,58 @@ pub fn serialize_options() -> mlua::SerializeOptions {
         .serialize_none_to_null(false)
         .serialize_unit_to_null(false)
 }
+
+/// Reject a filesystem path that contains a `..` component or a NUL byte.
+///
+/// Absolute paths and relative paths that do not climb out of their prefix
+/// are returned unchanged, so operator paths such as `/var/spool/kumomta`
+/// keep working. The returned reference is the same path the caller passed
+/// in; callers must use it for the subsequent filesystem operation so a
+/// traversal component cannot reach `open` or `read_dir`.
+pub fn sanitize_untrusted_path(path: &std::path::Path) -> anyhow::Result<&std::path::Path> {
+    if path.as_os_str().to_string_lossy().contains('\0') {
+        anyhow::bail!("refusing filesystem path containing NUL");
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        anyhow::bail!(
+            "refusing filesystem path '{}': it contains a '..' component",
+            path.display()
+        );
+    }
+    Ok(path)
+}
+
+#[cfg(test)]
+mod sanitize_path_tests {
+    use super::sanitize_untrusted_path;
+    use std::path::Path;
+
+    #[test]
+    fn allows_absolute_and_relative_paths_without_parent_dir() {
+        for path in ["/var/spool/kumomta", "dkim/example.key", ".", "/etc"] {
+            let checked = sanitize_untrusted_path(Path::new(path)).unwrap();
+            assert_eq!(checked, Path::new(path));
+        }
+    }
+
+    #[test]
+    fn rejects_parent_dir_and_nul() {
+        for path in [
+            "../etc/passwd",
+            "/var/mail/../../etc/passwd",
+            "foo/../../etc",
+            "..",
+        ] {
+            let err = sanitize_untrusted_path(Path::new(path)).unwrap_err();
+            assert!(
+                err.to_string().contains(".."),
+                "{path} should be rejected, got {err}"
+            );
+        }
+        let err = sanitize_untrusted_path(Path::new("foo/bar\0baz")).unwrap_err();
+        assert!(err.to_string().contains("NUL"), "{err}");
+    }
+}

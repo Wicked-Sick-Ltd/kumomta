@@ -20,7 +20,20 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: 'Codeberg credentials'
+        id: codeberg
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+        run: |
+          if [ -n "$CODEBERG_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "CODEBERG_TOKEN is not set; skipping the Codeberg mirror."
+          fi
+
       - name: 'Mirror to Codeberg'
+        if: steps.codeberg.outputs.present == 'true'
         uses: cssnr/mirror-repository-action@v1
         with:
           #url: https://codeberg.org/cssnr/mirror-repository-action

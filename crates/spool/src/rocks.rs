@@ -425,6 +425,7 @@ impl RocksSpool {
         params: Option<RocksSpoolParams>,
         runtime: Handle,
     ) -> anyhow::Result<Self> {
+        let path = dir_probe::reject_parent_dir(path)?;
         let mut opts = Options::default();
         opts.set_use_fsync(flush);
         opts.create_if_missing(true);

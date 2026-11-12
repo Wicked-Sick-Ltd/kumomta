@@ -1,6 +1,11 @@
 name: KumoMTA Core Build
 on:
   workflow_call:
+    secrets:
+      OPENREPO_GPG_PUBLIC:
+        required: false
+      OPENREPO_GPG_PRIVATE:
+        required: false
     inputs:
       builder_image:
         required: true
