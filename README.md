@@ -36,3 +36,7 @@ You can subscribe to updates at [https://kumomta.com/subscribe](https://kumomta.
 ## Talk to Us
 
 We're available to talk about the project, book us at [https://cal.com/team/kumomta/talk-with-kumomta](https://cal.com/team/kumomta/talk-with-kumomta?utm_source=banner&utm_campaign=oss).
+
+## Cloud agent environment
+
+Cursor Cloud Agents on this fork run `bash .cursor/install.sh` (see `.cursor/environment.json`). That script installs system packages with `get-deps.sh`, the Rust toolchain pinned in `rust-toolchain.toml`, and then runs `cargo fetch --locked` and `cargo build --locked`. It does not start kumod and does not send mail. RPM signing keys (`OPENREPO_GPG_PUBLIC`, `OPENREPO_GPG_PRIVATE`) are optional and are not required to build or test.
